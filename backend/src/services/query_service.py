@@ -50,179 +50,149 @@ async def run_query(request: Dict[str, Any]) -> Dict[str, Any]:
             "anchors": ["getting-started"],
         }
 
-    # New flow: use Foundry project-level APIs (AIProjectClient) with DefaultAzureCredential
-    project_endpoint = os.environ.get("PROJECT_ENDPOINT") or os.environ.get("AI_FOUNDRY_ENDPOINT")
-    agent_id = os.environ.get("FOUNDARY_AGENT_ID") or os.environ.get("AI_FOUNDRY_AGENT_ID")
+    api_key = os.environ.get("AI_FOUNDRY_API_KEY")
+    endpoint = os.environ.get("AI_FOUNDRY_ENDPOINT")
 
-    if not project_endpoint:
-        raise RuntimeError("PROJECT_ENDPOINT is required when STUB_MODE is False")
+    if not api_key or not endpoint:
+        raise RuntimeError("AI_FOUNDRY_ENDPOINT and AI_FOUNDRY_API_KEY are required when STUB_MODE is False")
 
+    # FIRST: attempt to use the azure.ai.agents SDK (best-effort)
     try:
-        # Import project-level SDKs
-        from azure.ai.projects import AIProjectClient  # type: ignore
-        from azure.identity import DefaultAzureCredential  # type: ignore
-        from azure.ai.agents.models import ListSortOrder  # type: ignore
-    except Exception as e:
-        logger.exception("Required Foundry SDKs not available: %s", e)
-        raise RuntimeError(
-            "Foundry project SDKs are required. Install 'azure-ai-projects'/'azure-ai-agents' or ensure the SDK is available in the environment."
-        ) from e
+        agents_mod = importlib.import_module("azure.ai.agents")
+        # Look for a plausible client class
+        client_cls = None
+        for candidate in ("AgentsClient", "AgentClient", "AgentServiceClient", "AgentRuntimeClient"):
+            if hasattr(agents_mod, candidate):
+                client_cls = getattr(agents_mod, candidate)
+                break
 
-    def _sync_run():
-        try:
-            project = AIProjectClient(credential=DefaultAzureCredential(), endpoint=project_endpoint)
-
-            # Retrieve the existing agent (agent must be created in Foundry ahead of time)
-            if not agent_id:
-                # If agent id is not provided, attempt to fail clearly
-                raise RuntimeError("FOUNDARY_AGENT_ID (env) must be set when STUB_MODE is False")
-
-            agent = project.agents.get_agent(agent_id)
-
-            # Create or reuse thread and post the user message (content comes from the API request)
-            query_text = request.get("query", "")
-            provided_thread_id = request.get("thread_id")
-            thread_id_to_use = None
-
-            if provided_thread_id:
-                # Use the provided thread id (frontend-managed threads)
-                thread_id_to_use = provided_thread_id
-            else:
-                # Create a new thread and keep its id
-                thread = project.agents.threads.create()
-                thread_id_to_use = getattr(thread, "id", None)
-
+        if client_cls is not None:
+            # Try to construct with AzureKeyCredential when available
             try:
-                if thread_id_to_use:
-                    project.agents.messages.create(thread_id=thread_id_to_use, role="user", content=query_text)
-            except Exception:
-                # best-effort; continue
-                pass
+                from azure.core.credentials import AzureKeyCredential
 
-            # Create and process a run in the project agent
-            run_obj = project.agents.runs.create_and_process(thread_id=thread_id_to_use, agent_id=agent.id)
-
-            # Collect run steps and messages
-            run_steps = []
-            messages = []
-            try:
-                run_steps = list(project.agents.run_steps.list(thread_id=thread_id_to_use, run_id=run_obj.id))
+                creds = AzureKeyCredential(api_key)
+                client = client_cls(endpoint, creds)
             except Exception:
-                run_steps = []
-
-            try:
-                messages = list(project.agents.messages.list(thread_id=thread_id_to_use, order=ListSortOrder.ASCENDING))
-            except Exception:
+                # Fallback to trying the simpler constructor
                 try:
-                    messages = list(project.agents.messages.list(thread_id=thread_id_to_use))
+                    client = client_cls(endpoint, api_key)
                 except Exception:
-                    messages = []
+                    # Give up on SDK client construction path
+                    raise
 
-            return run_obj, run_steps, messages, thread_id_to_use
-        except Exception as e:
-            logger.exception("Project agent run failed: %s", e)
-            return None, [], [], None
+            prompt_text = request.get("query", "")
 
-    try:
-        run_obj, run_steps, messages, thread_id = await asyncio.to_thread(_sync_run)
-    except Exception as e:
-        logger.exception("Agent run thread failed: %s", e)
-        run_obj, run_steps, messages, thread_id = None, [], [], None
+            # Find a plausible invocation method on the client
+            method = None
+            for candidate in (
+                "get_response",
+                "get_responses",
+                "begin_get_responses",
+                "run",
+                "begin_run",
+                "invoke",
+                "invoke_agent",
+                "create_response",
+            ):
+                if hasattr(client, candidate):
+                    method = getattr(client, candidate)
+                    break
 
-    # Parse run outputs and messages (similar heuristics as before)
-    answer = None
-    citations = []
+            # Some SDKs might expose a `responses` property that is itself callable
+            if method is None and hasattr(client, "responses"):
+                method = getattr(client, "responses")
 
-    try:
-        for m in messages:
+            if method is None:
+                raise RuntimeError("Found azure.ai.agents client but no known invocation method")
+
+            # Call the method and await if it returns a coroutine
             try:
-                text_msgs = getattr(m, "text_messages", None)
-                if text_msgs:
-                    last_text = text_msgs[-1]
-                    text_val = getattr(last_text, "text", None)
-                    if text_val is not None:
-                        val = getattr(text_val, "value", None) or str(text_val)
-                        if isinstance(val, str) and val.strip():
-                            answer = val
-                if isinstance(m, dict) and not answer:
-                    if m.get("role") == "assistant":
-                        answer = m.get("text") or m.get("content") or answer
-            except Exception:
-                pass
-    except Exception:
-        answer = None
+                out = method(prompt_text) if callable(method) else method
+                resp = await _maybe_await(out)
+            except Exception as e:
+                logger.exception("Error invoking agent SDK method: %s", e)
+                raise
 
-    # Extract tool call outputs for citations
-    try:
-        for step in run_steps:
-            try:
-                step_details = None
-                if isinstance(step, dict):
-                    step_details = step.get("step_details")
-                else:
-                    step_details = getattr(step, "step_details", None)
-                if step_details:
-                    tool_calls = []
-                    if isinstance(step_details, dict):
-                        tool_calls = step_details.get("tool_calls", [])
-                    else:
-                        tool_calls = getattr(step_details, "tool_calls", [])
-                    for call in tool_calls:
-                        try:
-                            url = (call.get("url") if isinstance(call, dict) else getattr(call, "url", None)) or (call.get("target") if isinstance(call, dict) else getattr(call, "target", None))
-                            snippet = (call.get("result") if isinstance(call, dict) else getattr(call, "result", None)) or (call.get("content") if isinstance(call, dict) else getattr(call, "content", None))
-                            if url:
-                                citations.append({"url": url, "snippet": snippet})
-                        except Exception:
-                            continue
-            except Exception:
-                continue
-    except Exception:
-        citations = []
-
-    if not answer:
-        try:
-            if isinstance(run_obj, dict):
-                for key in ("output", "result", "answer", "content"):
-                    if key in run_obj:
-                        answer = run_obj.get(key)
+            # Extract human-friendly answer text using heuristics
+            answer = None
+            if isinstance(resp, dict):
+                for key in ("output", "answer", "result", "content", "text", "generated_text"):
+                    if key in resp:
+                        answer = resp[key]
                         break
+                if answer is None and "choices" in resp and isinstance(resp["choices"], list) and resp["choices"]:
+                    ch = resp["choices"][0]
+                    if isinstance(ch, dict):
+                        if "message" in ch and isinstance(ch["message"], dict):
+                            answer = ch["message"].get("content") or ch["message"].get("text")
+                        else:
+                            answer = ch.get("text") or str(ch)
+            else:
+                # Non-dict responses -> stringify
+                answer = str(resp)
+
+            if not answer:
+                answer = "(no text returned by agent)"
+
+            return {
+                "answer": answer,
+                "citations": [],
+                "confidence": 0.5,
+                "fallback": False,
+            }
+    except Exception as e:
+        # SDK path failed; log and continue to REST fallback
+        logger.exception("Azure Agents SDK integration not available or failed: %s", e)
+
+    # SECOND: fallback to a simple HTTP call to the configured endpoint
+    try:
+        headers = {"Content-Type": "application/json"}
+        # Try common header names for Azure/OpenAI style services
+        headers["api-key"] = api_key
+        headers.setdefault("Authorization", f"Bearer {api_key}")
+
+        payload = {"input": request.get("query", "")}
+
+        # Import httpx lazily so STUB_MODE=true environments don't need it installed
+        try:
+            import httpx
         except Exception:
-            pass
+            raise RuntimeError(
+                "httpx is required for non-stub REST requests. Install with: pip install httpx"
+            )
 
-    if not answer:
-        raise RuntimeError("Agent run did not produce an answer")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(endpoint, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
 
-    return {"answer": answer, "citations": citations, "confidence": 0.9, "fallback": False, "thread_id": thread_id}
+            answer = None
+            if isinstance(data, dict):
+                # openai-style choices
+                if "choices" in data and isinstance(data["choices"], list) and data["choices"]:
+                    choice = data["choices"][0]
+                    if isinstance(choice, dict):
+                        if "message" in choice and isinstance(choice["message"], dict):
+                            answer = choice["message"].get("content") or choice["message"].get("text")
+                        else:
+                            answer = choice.get("text") or str(choice)
+                # Try common top-level fields
+                if not answer:
+                    for key in ("answer", "output", "result", "content", "generated_text", "text"):
+                        if key in data:
+                            val = data[key]
+                            if isinstance(val, dict):
+                                answer = val.get("output") or val.get("text") or str(val)
+                            else:
+                                answer = val
+                            break
 
+            if answer is None:
+                # Fallback to raw JSON string
+                answer = str(data)
 
-async def create_thread(pseudo_user_id: str | None = None) -> Dict[str, Any]:
-    """Create a Foundry thread and return its id.
-
-    In STUB_MODE this returns a generated UUID. Otherwise it calls the
-    project-level API to create a thread and returns {"thread_id": id}.
-    """
-    stub = os.environ.get("STUB_MODE", "true").lower() in ("1", "true", "yes")
-    if stub:
-        import uuid
-
-        return {"thread_id": str(uuid.uuid4())}
-
-    project_endpoint = os.environ.get("PROJECT_ENDPOINT") or os.environ.get("AI_FOUNDRY_ENDPOINT")
-    if not project_endpoint:
-        raise RuntimeError("PROJECT_ENDPOINT is required when STUB_MODE is False")
-
-    try:
-        from azure.ai.projects import AIProjectClient  # type: ignore
-        from azure.identity import DefaultAzureCredential  # type: ignore
+            return {"answer": answer, "citations": [], "confidence": 0.5, "fallback": False}
     except Exception as e:
-        logger.exception("Foundry SDK not available: %s", e)
-        raise RuntimeError("Foundry project SDK not available; install azure-ai-projects or ensure the SDK is on PYTHONPATH") from e
-
-    try:
-        project = AIProjectClient(credential=DefaultAzureCredential(), endpoint=project_endpoint)
-        thread = project.agents.threads.create()
-        return {"thread_id": getattr(thread, "id", None)}
-    except Exception as e:
-        logger.exception("Failed to create Foundry thread: %s", e)
-        raise RuntimeError("Failed to create Foundry thread") from e
+        logger.exception("Failed to call AI_FOUNDRY_ENDPOINT: %s", e)
+        raise RuntimeError("Agent call failed; ensure AI_FOUNDRY_API_KEY and AI_FOUNDRY_ENDPOINT are set, or use STUB_MODE=true") from e
