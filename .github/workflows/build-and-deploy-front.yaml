@@ -51,6 +51,6 @@ jobs:
           uses: azure/container-apps-deploy-action@v1
           with:
             imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COPILOT_ACA_NAME }}:${{ github.sha }}
-            containerAppName: ${{ secrets.COURSES_ACA_NAME }}
+            containerAppName: ${{ secrets.COPILOT_ACA_NAME }}
             resourceGroup: ${{ secrets.ACA_RG_NAME }}
               
