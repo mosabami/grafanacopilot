@@ -26,7 +26,9 @@
 
 ## Minimal Integration Flow (prototype)
 
-1. Frontend POST /api/query (or open stream to /api/query/stream) { query, pseudo_user_id? }
+1. Frontend POST /api/query { query, pseudo_user_id? }
+
+   Note: For the initial prototype (MVP) the frontend will use the non-streaming `/api/query` endpoint only. The streaming endpoint `/api/query/stream` is planned for future iterations but is deferred for the initial integration — the backend may still implement a streaming endpoint, but the frontend must not rely on streaming for the MVP.
 
 2. Backend flow (sync or streaming):
    - Check STUB_MODE or presence of PROJECT_ENDPOINT & MCP config; if stub -> build canned response using prioritized sources list;

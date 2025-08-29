@@ -2,6 +2,10 @@
 
 import os
 import sys
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+
 # Make the repository root (two levels up from this file) available on sys.path so
 # fully-qualified imports such as `backend.src.api` work even when running the
 # script from the `backend` directory (python src/app.py).
@@ -26,7 +30,6 @@ except Exception:
     # python-dotenv not available or loading failed; ignore and continue
     pass
 
-from fastapi import FastAPI
 
 # Initialize structured logging as early as possible (best-effort)
 try:
@@ -40,6 +43,13 @@ except Exception:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Grafana Copilot Prototype")
+    app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    )   
 
     # Attempt to enable Application Insights / OpenTelemetry exporter if configured
     try:
