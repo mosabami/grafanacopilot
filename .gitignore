@@ -1,0 +1,124 @@
+# Python byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Virtual environment directories
+venv/
+ENV/
+env/
+.venv/
+.ENV/
+env.bak/
+venv.bak/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Pyenv
+.python-version
+
+# pipenv / poetry
+Pipfile.lock
+poetry.lock
+
+# pyenv-virtualenv
+.python-version
+
+# Editor / IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# PyCharm
+.idea/
+*.iml
+
+# VS Code settings folder (workspace-specific)
+.vscode/
+
+# Django stuff (if applicable)
+local_settings.py
+db.sqlite3
+
+# Flask (if applicable)
+instance/
+.webassets-cache/
+
+# Sphinx documentation
+docs/_build/
+
+# Pyre / mypy
+.pyre/
+.mypy_cache/
+
+# PyInstaller
+*.spec
+
+# Logging
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# dotenv
+.env
+.env.*
+
+# Database files
+*.db
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+
+# Misc
+__pypackages__/
+
+# Docker Compose override (optional local overrides)
+docker-compose.override.yml
+
+# Local secrets or credentials placed in repo by mistake
+credentials.json
+
+# End of file

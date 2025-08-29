@@ -1,0 +1,22 @@
+azure-ai-agents==1.1.0
+fastapi>=0.95
+uvicorn[standard]>=0.20
+pydantic>=1.10
+httpx>=0.24
+asyncpg>=0.27
+psycopg2-binary>=2.9,<3.0
+SQLAlchemy>=1.4
+jsonschema
+python-dotenv
+pytest>=7.0
+pytest-asyncio
+black
+ruff
+isort
+# Optional telemetry & agent extras - install these when you want AppInsights tracing
+# and/or real AI agent integration (not required for STUB_MODE)
+azure-monitor-opentelemetry-exporter
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+python-json-logger
