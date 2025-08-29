@@ -34,8 +34,8 @@ jobs:
                   --registry ${{ secrets.ACR_NAME }} \
                   -g ${{ secrets.ACA_RG_NAME }} \
                   --build-arg VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
-                  -f ./Dockerfile \
-                  .
+                  -f ./frontend/Dockerfile \
+                  ./frontend
     deploy:
       needs:
           - buildImage
