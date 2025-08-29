@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { query, createThread } from '../api.ts';
+import { useEffect, useState, useRef } from 'react';
+import { query, createThread } from '../api';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
@@ -15,6 +15,27 @@ const CopilotSidebar = () => {
   });
   const [loading, setLoading] = useState(false);
 
+  // Resizable sidebar state (persisted)
+  const asideRef = useRef<HTMLDivElement | null>(null);
+  const initialWidth = (() => {
+    try {
+      const v = Number(localStorage.getItem('copilot_sidebar_width'));
+      return Number.isFinite(v) && v >= 220 ? v : 360;
+    } catch (e) {
+      return 360;
+    }
+  })();
+  const [width, setWidth] = useState<number>(initialWidth);
+
+  useEffect(() => {
+    // Keep width persisted if changed programmatically elsewhere
+    try {
+      localStorage.setItem('copilot_sidebar_width', String(width));
+    } catch {
+      /* ignore */
+    }
+  }, [width]);
+
   useEffect(() => {
     if (threadId) {
       try {
@@ -26,6 +47,7 @@ const CopilotSidebar = () => {
   }, [threadId]);
 
   useEffect(() => {
+    // If no thread_id in localStorage, create one for this session
     if (!threadId) {
       (async () => {
         try {
@@ -38,6 +60,72 @@ const CopilotSidebar = () => {
     }
   }, []);
 
+  // Drag handling: pointer events used so it works with mouse/touch
+  const startDrag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = asideRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const onPointerMove = (ev: PointerEvent) => {
+      const clientX = ev.clientX;
+      const newWidth = Math.round(rect.right - clientX);
+      const minWidth = 220;
+      const maxWidth = Math.max(minWidth, window.innerWidth - 200);
+      const clamped = Math.max(minWidth, Math.min(maxWidth, newWidth));
+      setWidth(clamped);
+      try {
+        localStorage.setItem('copilot_sidebar_width', String(clamped));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const onPointerUp = () => {
+      document.removeEventListener('pointermove', onPointerMove as any);
+      document.removeEventListener('pointerup', onPointerUp as any);
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('pointermove', onPointerMove as any);
+    document.addEventListener('pointerup', onPointerUp as any);
+    document.body.style.userSelect = 'none';
+  };
+
+  // Helper to extract readable answer (avoid showing raw JSON in chat)
+  const parseAssistantText = (response: any): string => {
+    if (response == null) return 'No answer';
+    if (typeof response === 'string') {
+      const s = response.trim();
+      if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+        try {
+          const p = JSON.parse(s);
+          if (p && typeof p === 'object') {
+            if (typeof p.answer === 'string') return p.answer;
+            if (typeof p.message === 'string') return p.message;
+            if (p?.data && typeof p.data.answer === 'string') return p.data.answer;
+            for (const k of Object.keys(p)) {
+              if (typeof p[k] === 'string') return p[k];
+            }
+            return JSON.stringify(p);
+          }
+        } catch {
+          return s;
+        }
+      }
+      return s;
+    }
+    if (typeof response === 'object') {
+      if (typeof response.answer === 'string') return response.answer;
+      if (typeof response.message === 'string') return response.message;
+      if (response?.data && typeof response.data.answer === 'string') return response.data.answer;
+      for (const k of Object.keys(response)) {
+        if (typeof response[k] === 'string') return response[k];
+      }
+      return JSON.stringify(response);
+    }
+    return String(response);
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
     const text = input.trim();
@@ -47,57 +135,11 @@ const CopilotSidebar = () => {
 
     const payload = { query: text, thread_id: threadId ?? undefined } as any;
 
-    // show a placeholder assistant message while we wait for the non-streaming response
+    // optimistic assistant placeholder
     setMessages(prev => [...prev, { role: 'assistant', text: 'Thinking...' }]);
 
     try {
       const res: any = await query(payload);
-
-      const parseAssistantText = (response: any): string => {
-        if (response == null) return 'No answer';
-
-        // If server returned a JSON string, try to parse it and extract 'answer' or a readable string
-        if (typeof response === 'string') {
-          const s = response.trim();
-          // heuristic: string looks like JSON
-          if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
-            try {
-              const p = JSON.parse(s);
-              if (p && typeof p === 'object') {
-                if (typeof p.answer === 'string') return p.answer;
-                if (typeof p.message === 'string') return p.message;
-                if (p?.data && typeof p.data.answer === 'string') return p.data.answer;
-                // take first string property if available
-                for (const k of Object.keys(p)) {
-                  if (typeof p[k] === 'string') return p[k];
-                }
-                // fallback to a compact JSON string
-                return JSON.stringify(p);
-              }
-            } catch (e) {
-              // not JSON
-              return s;
-            }
-          }
-
-          // not JSON-like, return raw string
-          return s;
-        }
-
-        // If response is already an object
-        if (typeof response === 'object') {
-          if (typeof response.answer === 'string') return response.answer;
-          if (typeof response.message === 'string') return response.message;
-          if (response?.data && typeof response.data.answer === 'string') return response.data.answer;
-          for (const k of Object.keys(response)) {
-            if (typeof response[k] === 'string') return response[k];
-          }
-          return JSON.stringify(response);
-        }
-
-        return String(response);
-      };
-
       const assistantText = parseAssistantText(res) || 'No answer';
 
       setMessages(prev => {
@@ -121,7 +163,20 @@ const CopilotSidebar = () => {
   };
 
   return (
-    <aside className="bg-white border-l border-gray-200 p-4 h-[calc(100vh-4rem)] sticky top-16 w-80 flex flex-col">
+    <aside
+      ref={asideRef}
+      style={{ width: `${width}px` }}
+      className="relative bg-white border-l border-gray-200 p-4 h-[calc(100vh-4rem)] sticky top-16 flex flex-col"
+    >
+      {/* left-edge drag handle (visible on large screens) */}
+      <div
+        onPointerDown={startDrag}
+        className="hidden lg:flex absolute -left-3 top-0 bottom-0 items-center justify-center w-6 cursor-col-resize z-40"
+        aria-hidden="true"
+      >
+        <div className="h-12 w-[2px] bg-gray-300 rounded"></div>
+      </div>
+
       <div className="flex items-center gap-3 mb-3">
         <div className="w-11 h-11 rounded-md bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold flex items-center justify-center">CP</div>
         <div className="font-semibold">

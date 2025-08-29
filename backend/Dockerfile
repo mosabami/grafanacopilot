@@ -9,17 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Set working directory to /app/backend so that running `python src/app.py` inside
+# the image computes REPO_ROOT as /app (two levels up from /app/backend/src/app.py).
+WORKDIR /app/backend
 
-# Copy and install backend requirements
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Copy and install backend requirements (cacheable layer)
+COPY requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
-# Copy repository into container
-COPY . /app
+# Copy backend repository content into the image
+COPY . /app/backend
 
 EXPOSE 8000
 
-# Start the app directly (runs python backend/src/app.py). This ensures the 'backend' package
-# is importable because /app is on PYTHONPATH (working directory).
+# Start the app directly (runs python src/app.py). This mirrors the local
+# command `python src/app.py` when run from the backend folder.
 CMD ["python", "-u", "src/app.py"]

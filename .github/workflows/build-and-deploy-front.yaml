@@ -1,0 +1,56 @@
+name: frontend copilot deployment main
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: [main]
+    paths:
+      - '**'
+      - '.github/workflows/build-and-deploy-front.yaml'
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+    buildImage:
+        permissions:
+            contents: read
+            id-token: write
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v2
+              name: checkout
+            - uses: azure/login@v1
+              name: Azure login
+              with:
+                creds: ${{ secrets.AZURE_CREDENTIALS }}
+            - name: List  directory contents
+              run: ls 
+            - name: List backend directory contents
+              run: ls -l .
+            - name: Build and push customer coursedata image to ACR
+              run: |
+                az acr build \
+                  --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COPILOT_ACA_NAME }}:${{ github.sha }} \
+                  --registry ${{ secrets.ACR_NAME }} \
+                  -g ${{ secrets.ACA_RG_NAME }} \
+                  --build-arg VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
+                  -f ./Dockerfile \
+                  .
+    deploy:
+      needs:
+          - buildImage
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout to the branch
+          uses: actions/checkout@v2
+        - name: Azure Login
+          uses: azure/login@v1
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}        
+        - name: Deploy the container to ACA customerbackend
+          uses: azure/container-apps-deploy-action@v1
+          with:
+            imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COURSES_ACA_NAME }}:${{ github.sha }}
+            containerAppName: ${{ secrets.COURSES_ACA_NAME }}
+            resourceGroup: ${{ secrets.ACA_RG_NAME }}
+              
