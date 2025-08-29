@@ -50,7 +50,7 @@ jobs:
         - name: Deploy the container to ACA customerbackend
           uses: azure/container-apps-deploy-action@v1
           with:
-            imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COURSES_ACA_NAME }}:${{ github.sha }}
+            imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COPILOT_ACA_NAME }}:${{ github.sha }}
             containerAppName: ${{ secrets.COURSES_ACA_NAME }}
             resourceGroup: ${{ secrets.ACA_RG_NAME }}
               
