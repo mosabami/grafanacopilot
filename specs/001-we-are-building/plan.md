@@ -39,8 +39,29 @@
 ## FastAPI API Contracts (MVP) — add streaming
 
 - POST /api/query (non-streaming)
-  - Request: { "query": string, "pseudo_user_id"?: string }
-  - Response: { "answer": string, "citations": [...], "confidence": number, "fallback": boolean }
+  - Request: { "query": string, "pseudo_user_id"?: string, "thread_id"?: string }
+    - If `thread_id` is provided by the frontend, backend will post the message to that Foundry thread. If omitted, backend will create a new thread and return `thread_id` in the response.
+  - Response: { "answer": string, "citations": [...], "confidence": number, "fallback": boolean, "thread_id"?: string }
++
++  Example response (real run):
++
++  ```json
++  {
++    "answer": "Azure Managed Grafana offers a fully managed and scalable approach to using Grafana on Azure. It simplifies the process of creating dashboards to visualize and analyze your data from various Azure services, on-premises systems, or other cloud systems without needing to set up and manage Grafana servers yourself. Users can benefit from features such as automatic high availability, reliability, and native integration with Azure security services like Azure Active Directory (AAD) for user authentication.\n\nA strong advantage is its seamless integration with popular Azure services (e.g., Azure Monitor, Log Analytics, and Application Insights), which enables faster insights and troubleshooting. It is also ideal for teams keen on building end-to-end observability for applications and infrastructure across hybrid environments. Moreover, since Microsoft maintains the service, it is updated regularly, ensuring compatibility and optimal performance.\n\nFor an exact fit of your needs, evaluating the service's features is recommended. If more information or specific use cases are what you need, let me know!",
++    "citations": [],
++    "confidence": 0.9,
++    "fallback": false,
++    "anchors": null,
++    "thread_id": "thread_gafT2SzYOVDNg9B4Tb60ZIBY"
++  }
++  ```
++
++  Frontend usage guidance:
++  - `answer`: Display this text to the user — it may contain inline citation markers like [1], [2]. Use the top-level `answer` field for the primary display content.
++  - `citations`: Show source links (URL + snippet) to support the answer; map inline citation numbers to these entries.
++  - `confidence`: Use to decide whether to highlight uncertain answers (e.g., show a "low confidence" notice).
++  - `fallback` (boolean): If true, indicate to the user the answer may not be fully grounded and suggest follow-ups.
++  - `thread_id`: Persist this in the frontend (e.g., session/localStorage) and include it in subsequent `/api/query` requests to continue the same Foundry thread.
 
 - POST /api/query/stream (streaming; SSE or chunked)
   - Client: opens a streaming request (SSE or HTTP chunked) including the same JSON payload; server streams partial tokens + citation markers and a final JSON summary event with confidence and citation array.
@@ -50,6 +71,11 @@
 
 - POST /api/telemetry
   - Request: { "event": string, "pseudo_user_id"?: string, "payload": object }
+
+- POST /api/threads
+  - Request: { "pseudo_user_id"?: string }
+  - Response: { "thread_id": string }
+  - Purpose: Create a Foundry thread and return its id so the frontend can store and reuse it in subsequent `/api/query` calls (frontend-managed thread flow). Example: front-end calls this on session start and stores returned `thread_id` in localStorage.
 
 
 ## Configuration (.env files)

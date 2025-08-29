@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "POST /api/threads request/response",
+  "definitions": {
+    "request": {
+      "type": "object",
+      "properties": {
+        "pseudo_user_id": {"type": "string"},
+        "page_context": {"type": "object","properties":{"sectionId":{"type":"string"}}}
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "thread_id": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "request": { "$ref": "#/definitions/request" },
+    "response": { "$ref": "#/definitions/response" }
+  }
+}

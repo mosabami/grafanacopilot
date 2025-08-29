@@ -79,44 +79,55 @@ async def run_query(request: Dict[str, Any]) -> Dict[str, Any]:
 
             agent = project.agents.get_agent(agent_id)
 
-            # Create thread and post the user message (content comes from the API request)
+            # Create or reuse thread and post the user message (content comes from the API request)
             query_text = request.get("query", "")
-            thread = project.agents.threads.create()
+            provided_thread_id = request.get("thread_id")
+            thread_id_to_use = None
+
+            if provided_thread_id:
+                # Use the provided thread id (frontend-managed threads)
+                thread_id_to_use = provided_thread_id
+            else:
+                # Create a new thread and keep its id
+                thread = project.agents.threads.create()
+                thread_id_to_use = getattr(thread, "id", None)
+
             try:
-                project.agents.messages.create(thread_id=thread.id, role="user", content=query_text)
+                if thread_id_to_use:
+                    project.agents.messages.create(thread_id=thread_id_to_use, role="user", content=query_text)
             except Exception:
                 # best-effort; continue
                 pass
 
             # Create and process a run in the project agent
-            run_obj = project.agents.runs.create_and_process(thread_id=thread.id, agent_id=agent.id)
+            run_obj = project.agents.runs.create_and_process(thread_id=thread_id_to_use, agent_id=agent.id)
 
             # Collect run steps and messages
             run_steps = []
             messages = []
             try:
-                run_steps = list(project.agents.run_steps.list(thread_id=thread.id, run_id=run_obj.id))
+                run_steps = list(project.agents.run_steps.list(thread_id=thread_id_to_use, run_id=run_obj.id))
             except Exception:
                 run_steps = []
 
             try:
-                messages = list(project.agents.messages.list(thread_id=thread.id, order=ListSortOrder.ASCENDING))
+                messages = list(project.agents.messages.list(thread_id=thread_id_to_use, order=ListSortOrder.ASCENDING))
             except Exception:
                 try:
-                    messages = list(project.agents.messages.list(thread_id=thread.id))
+                    messages = list(project.agents.messages.list(thread_id=thread_id_to_use))
                 except Exception:
                     messages = []
 
-            return run_obj, run_steps, messages
+            return run_obj, run_steps, messages, thread_id_to_use
         except Exception as e:
             logger.exception("Project agent run failed: %s", e)
-            return None, [], []
+            return None, [], [], None
 
     try:
-        run_obj, run_steps, messages = await asyncio.to_thread(_sync_run)
+        run_obj, run_steps, messages, thread_id = await asyncio.to_thread(_sync_run)
     except Exception as e:
         logger.exception("Agent run thread failed: %s", e)
-        run_obj, run_steps, messages = None, [], []
+        run_obj, run_steps, messages, thread_id = None, [], [], None
 
     # Parse run outputs and messages (similar heuristics as before)
     answer = None
@@ -182,4 +193,36 @@ async def run_query(request: Dict[str, Any]) -> Dict[str, Any]:
     if not answer:
         raise RuntimeError("Agent run did not produce an answer")
 
-    return {"answer": answer, "citations": citations, "confidence": 0.9, "fallback": False}
+    return {"answer": answer, "citations": citations, "confidence": 0.9, "fallback": False, "thread_id": thread_id}
+
+
+async def create_thread(pseudo_user_id: str | None = None) -> Dict[str, Any]:
+    """Create a Foundry thread and return its id.
+
+    In STUB_MODE this returns a generated UUID. Otherwise it calls the
+    project-level API to create a thread and returns {"thread_id": id}.
+    """
+    stub = os.environ.get("STUB_MODE", "true").lower() in ("1", "true", "yes")
+    if stub:
+        import uuid
+
+        return {"thread_id": str(uuid.uuid4())}
+
+    project_endpoint = os.environ.get("PROJECT_ENDPOINT") or os.environ.get("AI_FOUNDRY_ENDPOINT")
+    if not project_endpoint:
+        raise RuntimeError("PROJECT_ENDPOINT is required when STUB_MODE is False")
+
+    try:
+        from azure.ai.projects import AIProjectClient  # type: ignore
+        from azure.identity import DefaultAzureCredential  # type: ignore
+    except Exception as e:
+        logger.exception("Foundry SDK not available: %s", e)
+        raise RuntimeError("Foundry project SDK not available; install azure-ai-projects or ensure the SDK is on PYTHONPATH") from e
+
+    try:
+        project = AIProjectClient(credential=DefaultAzureCredential(), endpoint=project_endpoint)
+        thread = project.agents.threads.create()
+        return {"thread_id": getattr(thread, "id", None)}
+    except Exception as e:
+        logger.exception("Failed to create Foundry thread: %s", e)
+        raise RuntimeError("Failed to create Foundry thread") from e

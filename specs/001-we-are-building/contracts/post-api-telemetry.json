@@ -6,6 +6,7 @@
   "properties": {
     "event": {"type": "string"},
     "pseudo_user_id": {"type": "string"},
+    "thread_id": {"type": "string"},
     "payload": {"type": "object"}
   },
   "additionalProperties": false

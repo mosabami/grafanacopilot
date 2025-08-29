@@ -8,6 +8,7 @@
       "properties": {
         "query": {"type": "string"},
         "pseudo_user_id": {"type": "string"},
+        "thread_id": {"type": "string"},
         "page_context": {"type": "object","properties":{"sectionId":{"type":"string"}}}
       },
       "additionalProperties": false
@@ -30,7 +31,8 @@
         "citations": {"type": "array", "items": {"$ref": "#/definitions/citation"}},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "fallback": {"type": "boolean"},
-        "anchors": {"type":"array","items":{"type":"string"}}
+        "anchors": {"type":"array","items":{"type":"string"}},
+        "thread_id": {"type": "string"}
       },
       "additionalProperties": false
     }

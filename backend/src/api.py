@@ -34,6 +34,7 @@ class Citation(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     pseudo_user_id: Optional[str] = None
+    thread_id: Optional[str] = None
     page_context: Optional[dict] = None
 
 
@@ -43,6 +44,11 @@ class QueryResponse(BaseModel):
     confidence: float
     fallback: bool
     anchors: Optional[List[str]] = None
+    thread_id: Optional[str] = None
+
+
+class ThreadCreateRequest(BaseModel):
+    pseudo_user_id: Optional[str] = None
 
 
 @router.post("/api/admin/sources")
@@ -98,6 +104,22 @@ async def post_telemetry(payload: dict) -> dict:
 @router.get("/api/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@router.post("/api/threads")
+async def post_create_thread(payload: ThreadCreateRequest) -> Any:
+    """Create a Foundry thread and return its id.
+
+    The frontend can call this once per session to obtain a thread_id to reuse
+    in subsequent `/api/query` requests.
+    """
+    try:
+        from backend.src.services.query_service import create_thread
+
+        res = await create_thread(payload.pseudo_user_id)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # @router.get("/api/health/db")
