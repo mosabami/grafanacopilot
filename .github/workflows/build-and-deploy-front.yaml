@@ -34,8 +34,8 @@ jobs:
                   --registry ${{ secrets.ACR_NAME }} \
                   -g ${{ secrets.ACA_RG_NAME }} \
                   --build-arg VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
-                  -f ./Dockerfile \
-                  .
+                  -f ./frontend/Dockerfile \
+                  ./frontend
     deploy:
       needs:
           - buildImage
@@ -50,7 +50,7 @@ jobs:
         - name: Deploy the container to ACA customerbackend
           uses: azure/container-apps-deploy-action@v1
           with:
-            imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COURSES_ACA_NAME }}:${{ github.sha }}
-            containerAppName: ${{ secrets.COURSES_ACA_NAME }}
+            imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.COPILOT_ACA_NAME }}:${{ github.sha }}
+            containerAppName: ${{ secrets.COPILOT_ACA_NAME }}
             resourceGroup: ${{ secrets.ACA_RG_NAME }}
               
