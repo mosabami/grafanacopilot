@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "POST /api/telemetry",
+  "type": "object",
+  "required": ["event"],
+  "properties": {
+    "event": {"type": "string"},
+    "pseudo_user_id": {"type": "string"},
+    "payload": {"type": "object"}
+  },
+  "additionalProperties": false
+}

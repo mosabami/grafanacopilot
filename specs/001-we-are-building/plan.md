@@ -1,135 +1,241 @@
-# Implementation Plan: Azure Managed Grafana Copilot (Simple Prototype)
+# Implementation Plan: [FEATURE]
 
-**Branch**: `001-we-are-building` | **Date**: 2025-08-28  
-**Goal**: Deliver a functional prototype website + Copilot in a few hours (local/dev). Prioritize simplicity and a working demo over full test/gate coverage.
+**IMPORTANT UPDATE (2025-08-28)**: Streaming removed for prototype
+- Decision: The prototype will not require streaming responses. The selected SDK `azure-ai-agents==1.1.0` does not expose a streaming interface in v1.1.0, so the backend will use synchronous (single-response) calls to obtain final answers and citations.
+- Implication: The MVP API surface exposes `/api/query` (synchronous) for the initial prototype. If streaming is required later, evaluate other SDKs or implement server-side chunking/SSE as an upgrade.
+
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
+**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+
+## Execution Flow (/plan command scope)
+```
+1. Load feature spec from Input path
+   → If not found: ERROR "No feature spec at {path}"
+2. Fill Technical Context (scan for NEEDS CLARIFICATION)
+   → Detect Project Type from context (web=frontend+backend, mobile=app+api)
+   → Set Structure Decision based on project type
+3. Evaluate Constitution Check section below
+   → If violations exist: Document in Complexity Tracking
+   → If no justification possible: ERROR "Simplify approach first"
+   → Update Progress Tracking: Initial Constitution Check
+4. Execute Phase 0 → research.md
+   → If NEEDS CLARIFICATION remain: ERROR "Resolve unknowns"
+5. Execute Phase 1 → contracts, data-model.md, quickstart.md, agent-specific template file (e.g., `CLAUDE.md` for Claude Code, `.github/copilot-instructions.md` for GitHub Copilot, or `GEMINI.md` for Gemini CLI).
+6. Re-evaluate Constitution Check section
+   → If new violations: Refactor design, return to Phase 1
+   → Update Progress Tracking: Post-Design Constitution Check
+7. Plan Phase 2 → Describe task generation approach (DO NOT create tasks.md)
+8. STOP - Ready for /tasks command
+```
+
+**IMPORTANT**: The /plan command STOPS at step 7. Phases 2-4 are executed by other commands:
+- Phase 2: /tasks command creates tasks.md
+- Phase 3-4: Implementation execution (manual or via tools)
+
+## Summary
+[Extract from feature spec: primary requirement + technical approach from research]
+
+## Technical Context
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
+**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Project Type**: [single/web/mobile - determines source structure]  
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
+**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+
+## Constitution Check
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+**Simplicity**:
+- Projects: [#] (max 3 - e.g., api, cli, tests)
+- Using framework directly? (no wrapper classes)
+- Single data model? (no DTOs unless serialization differs)
+- Avoiding patterns? (no Repository/UoW without proven need)
+
+**Architecture**:
+- EVERY feature as library? (no direct app code)
+- Libraries listed: [name + purpose for each]
+- CLI per library: [commands with --help/--version/--format]
+- Library docs: llms.txt format planned?
+
+**Testing (NON-NEGOTIABLE)**:
+- RED-GREEN-Refactor cycle enforced? (test MUST fail first)
+- Git commits show tests before implementation?
+- Order: Contract→Integration→E2E→Unit strictly followed?
+- Real dependencies used? (actual DBs, not mocks)
+- Integration tests for: new libraries, contract changes, shared schemas?
+- FORBIDDEN: Implementation before test, skipping RED phase
+
+**Observability**:
+- Structured logging included?
+- Frontend logs → backend? (unified stream)
+- Error context sufficient?
+
+**Versioning**:
+- Version number assigned? (MAJOR.MINOR.BUILD)
+- BUILD increments on every change?
+- Breaking changes handled? (parallel tests, migration plan)
+
+## Project Structure
+
+### Documentation (this feature)
+```
+specs/[###-feature]/
+├── plan.md              # This file (/plan command output)
+├── research.md          # Phase 0 output (/plan command)
+├── data-model.md        # Phase 1 output (/plan command)
+├── quickstart.md        # Phase 1 output (/plan command)
+├── contracts/           # Phase 1 output (/plan command)
+└── tasks.md             # Phase 2 output (/tasks command - NOT created by /plan)
+```
+
+### Source Code (repository root)
+```
+# Option 1: Single project (DEFAULT)
+src/
+├── models/
+├── services/
+├── cli/
+└── lib/
+
+tests/
+├── contract/
+├── integration/
+└── unit/
+
+# Option 2: Web application (when "frontend" + "backend" detected)
+backend/
+├── src/
+│   ├── models/
+│   ├── services/
+│   └── api/
+└── tests/
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   └── services/
+└── tests/
+
+# Option 3: Mobile + API (when "iOS/Android" detected)
+api/
+└── [same as backend above]
+
+ios/ or android/
+└── [platform-specific structure]
+```
+
+**Structure Decision**: [DEFAULT to Option 1 unless Technical Context indicates web/mobile app]
+
+## Phase 0: Outline & Research
+1. **Extract unknowns from Technical Context** above:
+   - For each NEEDS CLARIFICATION → research task
+   - For each dependency → best practices task
+   - For each integration → patterns task
+
+2. **Generate and dispatch research agents**:
+   ```
+   For each unknown in Technical Context:
+     Task: "Research {unknown} for {feature context}"
+   For each technology choice:
+     Task: "Find best practices for {tech} in {domain}"
+   ```
+
+3. **Consolidate findings** in `research.md` using format:
+   - Decision: [what was chosen]
+   - Rationale: [why chosen]
+   - Alternatives considered: [what else evaluated]
+
+**Output**: research.md with all NEEDS CLARIFICATION resolved
+
+## Phase 1: Design & Contracts
+*Prerequisites: research.md complete*
+
+1. **Extract entities from feature spec** → `data-model.md`:
+   - Entity name, fields, relationships
+   - Validation rules from requirements
+   - State transitions if applicable
+
+2. **Generate API contracts** from functional requirements:
+   - For each user action → endpoint
+   - Use standard REST/GraphQL patterns
+   - Output OpenAPI/GraphQL schema to `/contracts/`
+
+3. **Generate contract tests** from contracts:
+   - One test file per endpoint
+   - Assert request/response schemas
+   - Tests must fail (no implementation yet)
+
+4. **Extract test scenarios** from user stories:
+   - Each story → integration test scenario
+   - Quickstart test = story validation steps
+
+5. **Update agent file incrementally** (O(1) operation):
+   - Run `/scripts/update-agent-context.sh [claude|gemini|copilot]` for your AI assistant
+   - If exists: Add only NEW tech from current plan
+   - Preserve manual additions between markers
+   - Update recent changes (keep last 3)
+   - Keep under 150 lines for token efficiency
+   - Output to repository root
+
+**Output**: data-model.md, /contracts/*, failing tests, quickstart.md, agent-specific file
+
+## Phase 2: Task Planning Approach
+*This section describes what the /tasks command will do - DO NOT execute during /plan*
+
+**Task Generation Strategy**:
+- Load `/templates/tasks-template.md` as base
+- Generate tasks from Phase 1 design docs (contracts, data model, quickstart)
+- Each contract → contract test task [P]
+- Each entity → model creation task [P] 
+- Each user story → integration test task
+- Implementation tasks to make tests pass
+
+**Ordering Strategy**:
+- TDD order: Tests before implementation 
+- Dependency order: Models before services before UI
+- Mark [P] for parallel execution (independent files)
+
+**Estimated Output**: 25-30 numbered, ordered tasks in tasks.md
+
+**IMPORTANT**: This phase is executed by the /tasks command, NOT by /plan
+
+## Phase 3+: Future Implementation
+*These phases are beyond the scope of the /plan command*
+
+**Phase 3**: Task execution (/tasks command creates tasks.md)  
+**Phase 4**: Implementation (execute tasks.md following constitutional principles)  
+**Phase 5**: Validation (run tests, execute quickstart.md, performance validation)
+
+## Complexity Tracking
+*Fill ONLY if Constitution Check has violations that must be justified*
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
 
 
-## Scope (MVP)
+## Progress Tracking
+*This checklist is updated during execution flow*
 
-- Complete marketing site prototype (landing/hero, concise value propositions, Getting Started CTA, FAQ, customer logos/use cases) plus the Copilot sidebar integrated into the site (not a standalone chatbot page).
-- The Copilot UI is embedded as a resizable, non-overlapping sidebar with greeting/expectations, scrollable history, copy buttons, and anchor linking to page sections.
-- Backend FastAPI endpoints to support both streaming and non-streaming responses (see API Contracts). Streaming responses must follow the structure and content rules in `specs/001-we-are-building/spec.md` (citations, anchors, fallbacks).
-- Admin-configurable list of Grafana doc URLs (in-memory for prototype; persisted in Postgres if time).
-- Telemetry: emit to Application Insights using provided connection string and log to console for local debugging; persist minimal usage_events to Postgres when DATABASE_URL set, otherwise use an in-memory buffer.
-- Support STUB_MODE=true when Foundry/MCP keys are not configured. In STUB_MODE the system returns canned, spec-compliant responses and logs how it would have retrieved/grounded content.
+**Phase Status**:
+- [ ] Phase 0: Research complete (/plan command)
+- [ ] Phase 1: Design complete (/plan command)
+- [ ] Phase 2: Task planning complete (/plan command - describe approach only)
+- [ ] Phase 3: Tasks generated (/tasks command)
+- [ ] Phase 4: Implementation complete
+- [ ] Phase 5: Validation passed
 
+**Gate Status**:
+- [ ] Initial Constitution Check: PASS
+- [ ] Post-Design Constitution Check: PASS
+- [ ] All NEEDS CLARIFICATION resolved
+- [ ] Complexity deviations documented
 
-## Architecture (simple)
-
-- frontend/ — React + TypeScript (Vite). Copilot UI component lives here.
-- backend/ — Python + FastAPI. Endpoints: /api/query, /api/admin/sources, /api/telemetry.
-- db/ — Postgres (docker-compose for local dev).
-- LLM: Azure AI Foundry Agent (call or stub).
-- Retrieval: Azure MCP server (or local stub for prototype).
-- Hosting later: Azure Container Apps (not required for initial prototype).
-
-
-## Minimal Integration Flow (prototype)
-
-1. Frontend POST /api/query (or open stream to /api/query/stream) { query, pseudo_user_id? }
-
-2. Backend flow (sync or streaming):
-   - Check STUB_MODE or presence of AI_FOUNDRY_API_KEY & MCP config; if stub -> build canned response using prioritized sources list;
-   - Otherwise call MCP retrieval (prioritize admin sources), assemble prompt compliant with `specs/001-we-are-building/spec.md` (include requested citation policy), then call Azure Foundry in streaming mode to produce tokens + citation chunks;
-   - Stream tokens to the frontend as they arrive (SSE / chunked HTTP) including inline citations and anchor directives; after stream finishes include final confidence and citation summary.
-
-3. Emit telemetry incrementally (stream start/partial/complete) to Application Insights and print to console; persist a minimal usage_event when DATABASE_URL is set (otherwise push event to in-memory store for short-term debugging).
-
-
-## FastAPI API Contracts (MVP) — add streaming
-
-- POST /api/query (non-streaming)
-  - Request: { "query": string, "pseudo_user_id"?: string }
-  - Response: { "answer": string, "citations": [...], "confidence": number, "fallback": boolean }
-
-- POST /api/query/stream (streaming; SSE or chunked)
-  - Client: opens a streaming request (SSE or HTTP chunked) including the same JSON payload; server streams partial tokens + citation markers and a final JSON summary event with confidence and citation array.
-
-- POST /api/admin/sources (prototype: API key authentication optional)
-  - Request: { "url": string }
-
-- POST /api/telemetry
-  - Request: { "event": string, "pseudo_user_id"?: string, "payload": object }
-
-
-## Configuration (.env files)
-
-Place a `.env` file at the root of each container (backend/.env and frontend/.env). Required keys (prototype):
-
-````text
-AI_FOUNDRY_ENDPOINT=...
-AI_FOUNDRY_API_KEY=...
-AI_FOUNDRY_PROJECT=...
-APPINSIGHTS_CONNECTION_STRING=...
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-ADMIN_API_KEY=secret-api-key
-STUB_MODE=true
-````
-
-- Backend must read `STUB_MODE` and fall back to the stub behavior when true or when AI keys are missing.
-- Frontend .env should include only public-safe keys or flags (e.g., STUB_MODE) and the backend URL.
-
-
-## Telemetry & persistence behavior
-
-- Emit telemetry to Application Insights using APPINSIGHTS_CONNECTION_STRING when provided. Also print telemetry JSON to console for local debugging.
-- Persist minimal usage_events to Postgres when DATABASE_URL is present. If DATABASE_URL is missing, store events in an in-memory list (app.state.in_memory_usage_events) for debugging and eventual flush if DB becomes available.
-
-
-## Local dev quick-start (docker-compose + env_file)
-
-- Provide a docker-compose.yml with services: frontend, backend, postgres. Use env_file to load `backend/.env` and `frontend/.env` so local config is trivial.
-
-Example docker-compose snippet (expand as needed):
-
-````yaml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: grafanacopilot
-    ports:
-      - '5432:5432'
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  backend:
-    build: ./backend
-    env_file:
-      - ./backend/.env
-    depends_on:
-      - postgres
-    ports:
-      - '8000:8000'
-
-  frontend:
-    build: ./frontend
-    env_file:
-      - ./frontend/.env
-    ports:
-      - '3000:3000'
-
-volumes:
-  pgdata:
-````
-
-- Dockerfiles already target Linux-compatible bases (python:3.11-slim, node:20-alpine) so images are suitable for later Azure Container Apps deployment.
-
-
-## Stub mode requirements
-
-- When STUB_MODE=true or AI_FOUNDRY_API_KEY is absent, the backend should:
-  - Use canned responses that are compliant with `specs/001-we-are-building/spec.md` (include citations and anchors where appropriate).
-  - Log that it is operating in stub mode and the reason (missing keys or explicit flag) via console and App Insights.
-
-
-## Minimal code note (persistence & stub mode)
-
-- Ensure the example FastAPI handler checks `STUB_MODE` and `DATABASE_URL` environment variables and chooses the appropriate path (stub vs real call; in-memory vs DB persist).
-
-
-## Deliverable (unchanged)
-
-- Working local demo that runs via docker-compose, supports streaming or non-streaming queries, obeys spec-driven response format, supports stub mode, logs telemetry to console and App Insights (if configured), persists to Postgres when configured, and uses `.env` files for trivial configuration.
+---
+*Based on Constitution v2.1.1 - See `/memory/constitution.md`*
