@@ -1,40 +1,26 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
-import { CopilotSidebar } from './components/CopilotSidebar'
+import React from 'react';
+import Header from './components/Header';
+import Hero from './components/Hero';
+import Benefits from './components/Benefits';
+import Capabilities from './components/Capabilities';
+import Pricing from './components/Pricing';
+import Testimonials from './components/Testimonials';
+import FAQ from './components/FAQ';
+import Footer from './components/Footer';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'stretch' }}>
-      <main style={{ flex: 1, padding: 16 }}>
-        <div>
-          <a href="https://vite.dev" target="_blank">
-            <img src={viteLogo} className="logo" alt="Vite logo" />
-          </a>
-          <a href="https://react.dev" target="_blank">
-            <img src={reactLogo} className="logo react" alt="React logo" />
-          </a>
-        </div>
-        <h1>Vite + React</h1>
-        <div className="card">
-          <button onClick={() => setCount((count) => count + 1)}>
-            count is {count}
-          </button>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test HMR
-          </p>
-        </div>
-        <p className="read-the-docs">
-          Click on the Vite and React logos to learn more
-        </p>
-      </main>
-
-      <CopilotSidebar />
+    <div className="min-h-screen bg-white">
+      <Header />
+      <Hero />
+      <Benefits />
+      <Capabilities />
+      <Pricing />
+      <Testimonials />
+      <FAQ />
+      <Footer />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

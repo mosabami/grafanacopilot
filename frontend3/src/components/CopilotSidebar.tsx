@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { query, createThread } from '../api';
+import '../App.css';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
-export const CopilotSidebar: React.FC = () => {
+export const CopilotSidebar = () => {
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [input, setInput] = useState('');
 	const [threadId, setThreadId] = useState<string | null>(() => {
@@ -17,7 +18,11 @@ export const CopilotSidebar: React.FC = () => {
 
 	useEffect(() => {
 		if (threadId) {
-			try { localStorage.setItem('copilot_thread_id', threadId); } catch (e) { /* ignore */ }
+			try {
+				localStorage.setItem('copilot_thread_id', threadId);
+			} catch (e) {
+				/* ignore */
+			}
 		}
 	}, [threadId]);
 
@@ -39,7 +44,7 @@ export const CopilotSidebar: React.FC = () => {
 	const handleSend = async () => {
 		if (!input.trim()) return;
 		const text = input.trim();
-		setMessages(prev => [...prev, { role: 'user', text }] );
+		setMessages(prev => [...prev, { role: 'user', text }]);
 		setInput('');
 		setLoading(true);
 
@@ -73,20 +78,39 @@ export const CopilotSidebar: React.FC = () => {
 	};
 
 	return (
-		<aside style={{ width: 360, borderLeft: '1px solid #ddd', padding: 12, height: '100vh', boxSizing: 'border-box', overflow: 'auto' }}>
-			<h3>Copilot</h3>
-			<div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+		<aside className="copilot-aside">
+			<div className="copilot-header">
+				<div className="copilot-logo">CP</div>
+				<div className="copilot-title">
+					<div>Copilot</div>
+					<div className="muted">AI assistant</div>
+				</div>
+			</div>
+
+			<div className="copilot-messages" role="log" aria-live="polite">
 				{messages.map((m, i) => (
-					<div key={i} style={{ background: m.role === 'user' ? '#f3f3f3' : '#e8f0ff', padding: 8, borderRadius: 6 }}>
+					<div key={i} className={`copilot-msg ${m.role}`}>
 						<div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
 					</div>
 				))}
 			</div>
 
-			<textarea value={input} onChange={(e) => setInput(e.target.value)} rows={3} placeholder="Ask the Copilot..." style={{ width: '100%' }} />
-			<div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-				<button onClick={handleSend} disabled={loading || !input.trim()}>{loading ? 'Thinking…' : 'Send'}</button>
-				<button onClick={() => setMessages([])}>Clear</button>
+			<div className="copilot-input">
+				<textarea
+					className="copilot-textarea"
+					value={input}
+					onChange={(e) => setInput(e.target.value)}
+					rows={3}
+					placeholder="Ask the Copilot..."
+					aria-label="Copilot input"
+				/>
+
+				<div className="copilot-controls">
+					<button className="cta-primary" onClick={handleSend} disabled={loading || !input.trim()}>
+						{loading ? 'Thinking…' : 'Send'}
+					</button>
+					<button className="cta-secondary" onClick={() => setMessages([])}>Clear</button>
+				</div>
 			</div>
 		</aside>
 	);
