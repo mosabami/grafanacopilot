@@ -9,6 +9,23 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+# Attempt to load a local .env (backend/.env) for local development. This makes
+# running `python src/app.py` pick up STUB_MODE, AI_FOUNDRY_API_KEY, etc. without
+# needing to export them in the shell. Fail silently if python-dotenv is not
+# installed (it's optional for production containers where env vars are injected).
+try:
+    from dotenv import load_dotenv
+
+    dotenv_path = os.path.join(REPO_ROOT, "backend", ".env")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path)
+    else:
+        # Fall back to default behavior of load_dotenv() which searches parent dirs
+        load_dotenv()
+except Exception:
+    # python-dotenv not available or loading failed; ignore and continue
+    pass
+
 from fastapi import FastAPI
 
 # Initialize structured logging as early as possible (best-effort)

@@ -29,7 +29,7 @@
 1. Frontend POST /api/query (or open stream to /api/query/stream) { query, pseudo_user_id? }
 
 2. Backend flow (sync or streaming):
-   - Check STUB_MODE or presence of AI_FOUNDRY_API_KEY & MCP config; if stub -> build canned response using prioritized sources list;
+   - Check STUB_MODE or presence of PROJECT_ENDPOINT & MCP config; if stub -> build canned response using prioritized sources list;
    - Otherwise call MCP retrieval (prioritize admin sources), assemble prompt compliant with `specs/001-we-are-building/spec.md` (include requested citation policy), then call Azure Foundry in streaming mode to produce tokens + citation chunks;
    - Stream tokens to the frontend as they arrive (SSE / chunked HTTP) including inline citations and anchor directives; after stream finishes include final confidence and citation summary.
 
@@ -57,16 +57,15 @@
 Place a `.env` file at the root of each container (backend/.env and frontend/.env). Required keys (prototype):
 
 ````text
-AI_FOUNDRY_ENDPOINT=...
-AI_FOUNDRY_API_KEY=...
-AI_FOUNDRY_PROJECT=...
+PROJECT_ENDPOINT=...  # Foundry project endpoint, e.g. https://<resource>.services.ai.azure.com/api/projects/<project-name>
+AI_FOUNDRY_PROJECT=...  # optional model/project/deployment identifier
 APPINSIGHTS_CONNECTION_STRING=...
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
 ADMIN_API_KEY=secret-api-key
 STUB_MODE=true
 ````
 
-- Backend must read `STUB_MODE` and fall back to the stub behavior when true or when AI keys are missing.
+- Backend must read `STUB_MODE` and fall back to the stub behavior when true or when project-level credentials / endpoint are missing.
 - Frontend .env should include only public-safe keys or flags (e.g., STUB_MODE) and the backend URL.
 
 
@@ -120,7 +119,7 @@ volumes:
 
 ## Stub mode requirements
 
-- When STUB_MODE=true or AI_FOUNDRY_API_KEY is absent, the backend should:
+- When STUB_MODE=true or PROJECT_ENDPOINT is missing, the backend should:
   - Use canned responses that are compliant with `specs/001-we-are-building/spec.md` (include citations and anchors where appropriate).
   - Log that it is operating in stub mode and the reason (missing keys or explicit flag) via console and App Insights.
 
@@ -137,13 +136,44 @@ volumes:
 
 ## AI Foundry Agent — Retrieval & Implementation (prototype)
 
-- Authentication (important):
-  - We will NOT use DefaultAzureCredential for this prototype. Instead the agent will be authenticated using an API key and the Foundry project endpoint.
+- Authentication (important): For this prototype we will use DefaultAzureCredential only. The agent will authenticate using managed identity or developer credentials via `DefaultAzureCredential()` and the project-level APIs (no API-key-based auth is used).
+
   - Required environment variables (backend/.env):
-    - AI_FOUNDRY_ENDPOINT — the full project endpoint/Responses API URL for your Foundry project.
-    - AI_FOUNDRY_API_KEY — the API key used to authorize requests to the Foundry endpoint.
+    - PROJECT_ENDPOINT — the full project endpoint for your Foundry project (for example, `https://<resource>.services.ai.azure.com/api/projects/<project-name>`).
     - AI_FOUNDRY_PROJECT (optional) — project or deployment identifier, if needed by the endpoint.
-  - Implementation note: prefer constructing the SDK client with AzureKeyCredential (from azure.core.credentials import AzureKeyCredential) and passing it to the AgentsClient. If the SDK is not available or the integration fails, fall back to a REST POST to the configured AI_FOUNDRY_ENDPOINT using the API key in headers (try `api-key` and `Authorization: Bearer <key>`).
+
+  - Implementation note: instantiate the project-level client with `DefaultAzureCredential` and the project endpoint. Example (prototype):
+
+    ```python
+    from azure.ai.projects import AIProjectClient
+    from azure.identity import DefaultAzureCredential
+    import os
+
+    project = AIProjectClient(
+        credential=DefaultAzureCredential(),
+        endpoint=os.getenv('PROJECT_ENDPOINT')
+    )
+
+    # Retrieve an existing agent (the agent is already created in AI Foundry for the prototype)
+    # Example: get agent by id (or name if supported). Replace AGENT_ID with your agent identifier.
+    agent = project.agents.get_agent(os.getenv('FOUNDARY_AGENT_ID', 'asst_yqZHPJUIFMjXNS693gcP7z6K'))
+
+    # Example run flow (create thread, post a message, create and process run)
+    from azure.ai.agents.models import ListSortOrder
+
+    thread = project.agents.threads.create()
+    project.agents.messages.create(thread_id=thread.id, role='user', content='Why should I use this service?')
+
+    run = project.agents.runs.create_and_process(thread_id=thread.id, agent_id=agent.id)
+
+    # After the run completes, list messages and extract assistant text
+    if run.status == 'failed':
+        raise RuntimeError(f'Agent run failed: {run.last_error}')
+    messages = project.agents.messages.list(thread_id=thread.id, order=ListSortOrder.ASCENDING)
+    # parse messages to extract assistant content / citations
+    ```
+
+  - If the SDK or project-level APIs are not available or misconfigured, the prototype will raise a clear configuration error. For local development use `STUB_MODE=true` to get canned responses.
 
 - Retrieval strategy — use the MCP server (mslearn) as the primary source:
   - The agent will be configured with an MCP tool (server_label `mslearn`, server_url `https://learn.microsoft.com/api/mcp`) so it can query the Microsoft Learn (mslearn) MCP server for documentation.
@@ -153,7 +183,8 @@ volumes:
     - If Azure Managed Grafana docs do not produce a satisfactory answer, broaden the MCP search to additional Microsoft Learn docs available on the server.
 
   - Tool configuration:
-    - Instantiate an `McpTool` (or equivalent) in the agent's `ToolSet` and set an appropriate approval mode (prototype: `never`). Add the toolset when creating or running the agent so the agent can run server-side searches and retrieve results as part of its run.
+    - Configure the agent in Azure AI Foundry (project) to include MCP retrieval (server_label `mslearn`, server_url `https://learn.microsoft.com/api/mcp`) or equivalent retrieval tooling. Set any prototype approval mode to `never` to allow automatic retrieval. The backend should not attempt to instantiate or manage Foundry retrieval tool classes; instead the agent should be pre-configured in Foundry to perform retrieval during runs.
+    - The backend's responsibility is to forward the incoming request's message as the `content` field of a message to the agent (for example: `project.agents.messages.create(thread_id=thread.id, role='user', content=user_query)`), call `project.agents.runs.create_and_process(...)`, and parse the run/messages for final answer and citations.
 
   - Results & snippets:
     - The agent should return citation references (URLs and short snippets) taken from the MCP results or from the page text returned by the MCP tool. If the MCP run includes structured tool_calls or step outputs, parse those for citations and snippets.
@@ -180,20 +211,41 @@ volumes:
   - Log the same payload to console for local debugging and to App Insights when `APPINSIGHTS_CONNECTION_STRING` exists.
 
 - Implementation steps (high-level):
-   1. Create `backend/src/services/mcp_tool_helper.py`:
-      - Provide a helper to initialize and return an MCP tool (server_label `mslearn`, server_url `https://learn.microsoft.com/api/mcp`) and a `ToolSet` configured for agent usage. Expose a convenience function that produces the toolset for inclusion in agent runs.
-      - Keep the helper minimal: constructing the McpTool and setting `approval_mode='never'` is sufficient for the prototype. The agent will call the toolset during its run to execute MCP searches.
+   1. Configure retrieval in Foundry (no backend mcp_tool_helper required):
+      - Configure the existing agent in Azure AI Foundry to include MCP retrieval (server_label `mslearn`) or equivalent discovery tools. Do not attempt to instantiate/connect an MCP tool from the backend; the agent should be pre-configured in the Foundry project to perform any MCP searches during its runs.
+      - The backend will simply create a thread, post the user's message (setting `content` to the incoming request `query`), call `runs.create_and_process(...)`, and parse messages/run_steps for the answer and citations.
    2. Update `backend/src/services/query_service.py`:
       - When STUB_MODE=true, return canned response (existing behavior).
       - When STUB_MODE=false:
         a. Build an agent prompt that includes a short system instruction and the user query. If the user did not specify a target product/service, add an instruction to assume the query concerns "Azure Managed Grafana" and prioritize mslearn docs for that product.
-        b. Instantiate Agents client using `AzureKeyCredential(AI_FOUNDRY_API_KEY)` and `AgentsClient(endpoint=AI_FOUNDRY_ENDPOINT, credential=...)`. When available, use the formal SDK calls to run an agent with the `ToolSet` from `mcp_tool_helper` so the agent can execute MCP searches. If the SDK or McpTool capability is missing, fall back to a REST POST to `AI_FOUNDRY_ENDPOINT` using `api-key` or `Authorization: Bearer <key>` headers.
+        b. Instantiate the project-level client using `DefaultAzureCredential()` and the project endpoint. Example:
++
++```python
++from azure.ai.projects import AIProjectClient
++from azure.identity import DefaultAzureCredential
++import os
++
++project = AIProjectClient(credential=DefaultAzureCredential(), endpoint=os.getenv('PROJECT_ENDPOINT'))
++agent = project.agents.get_agent(os.getenv('FOUNDARY_AGENT_ID'))
++# post a message in a thread and create/process a run:
++thread = project.agents.threads.create()
++project.agents.messages.create(thread_id=thread.id, role='user', content=user_query)
++run = project.agents.runs.create_and_process(thread_id=thread.id, agent_id=agent.id)
++```
++
++When available, use the Foundry project agent APIs (for example `AIProjectClient` + `project.agents.*`) to run the agent. The backend should:
++
++- create a thread (`project.agents.threads.create()`)
++- post the incoming API request text as the message `content` (`project.agents.messages.create(thread_id=..., role='user', content=request['query'])`)
++- call `project.agents.runs.create_and_process(thread_id=..., agent_id=agent.id)` and parse the returned run/messages for the final answer and citations.
++
++Do not attempt to instantiate or manage Foundry retrieval tool classes in the backend; the agent in Foundry should be pre-configured with any retrieval tools it requires. If the SDK or project-level APIs are missing or misconfigured, raise a clear configuration error. For local development use `STUB_MODE=true`.
         c. After the agent run completes, parse any tool_calls / run_steps to extract citations (URL + snippet) and the final answer. Convert this into the contract response shape: {answer, citations, confidence, fallback}.
    3. Add an optional `FETCH_LINK_CONTENT` env flag for debug/testing that when true allows fetching page content for richer snippets; default is false and the agent should rely on MCP-provided text.
    4. Add unit/integration tests that:
       - Assert STUB_MODE responses are contract-compliant.
       - Mock the Agents SDK or HTTP responses to verify citation extraction and the real-agent path without requiring live keys.
-   5. Update documentation and `.env.example` to include AI_FOUNDRY_ENDPOINT, AI_FOUNDRY_API_KEY, AI_FOUNDRY_PROJECT (optional), and FETCH_LINK_CONTENT (optional), and explicitly call out not to commit real keys.
+   5. Update documentation and `.env.example` to include PROJECT_ENDPOINT, AI_FOUNDRY_PROJECT (optional), and FETCH_LINK_CONTENT (optional), and explicitly call out not to commit real keys.
 
 - Security & operational notes:
   - Never commit API keys. Update `backend/.env.example` with placeholder variable names.

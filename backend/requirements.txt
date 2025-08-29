@@ -1,3 +1,5 @@
+azure-identity 
+azure-core
 azure-ai-agents==1.1.0
 fastapi>=0.95
 uvicorn[standard]>=0.20
@@ -20,3 +22,5 @@ opentelemetry-api
 opentelemetry-sdk
 opentelemetry-instrumentation-fastapi
 python-json-logger
+
+
